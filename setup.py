@@ -10,7 +10,7 @@ setup(
     name="texera-r-plugin",
     version="0.1.0",
     author="Texera Team",
-    author_email="texera-dev@googlegroups.com",
+    author_email="texeraproject@gmail.com",
     description="R language support plugin for Apache Texera",
     long_description=long_description,
     long_description_content_type="text/markdown",

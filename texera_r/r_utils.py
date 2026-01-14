@@ -87,7 +87,15 @@ def extract_tuple_from_r(
     }
 
     # Convert URI strings back to largebinary objects for LARGE_BINARY fields
-    if large_binary_fields:
+    # For source operators, we don't know which fields are large binary ahead of time,
+    # so we auto-detect any S3 URIs and convert them to largebinary objects
+    if source_operator:
+        # Auto-detect and convert any S3 URI strings to largebinary objects
+        for key, value in output_python_dict.items():
+            if isinstance(value, str) and value.startswith("s3://"):
+                output_python_dict[key] = largebinary(value)
+    elif large_binary_fields:
+        # For non-source operators, only convert known large_binary_fields
         for key, value in output_python_dict.items():
             if (
                 key in large_binary_fields

@@ -76,6 +76,43 @@ function(table, port) {
 }
 ```
 
+### Large Binary Support
+
+Handle large binary objects (images, files, etc.) via S3-compatible storage:
+
+**Writing Large Binary:**
+```r
+library(coro)
+coro::generator(function() {
+  # Create a new large binary object
+  lb <- largebinary()
+  
+  # Write data to it
+  stream <- LargeBinaryOutputStream(lb)
+  stream$write(charToRaw("Hello, Large Binary World!"))
+  stream$close()
+  
+  yield(list(file_content = lb))
+})
+```
+
+**Reading Large Binary:**
+```r
+library(coro)
+coro::generator(function(tuple, port) {
+  # Read from large binary object
+  stream <- LargeBinaryInputStream(tuple$file_content)
+  data <- stream$read()
+  stream$close()
+  
+  # Convert raw bytes to string
+  content <- rawToChar(data)
+  
+  tuple$content_text <- content
+  yield(tuple)
+})
+```
+
 ## Features
 
 - **Tuple API**: Row-by-row processing with R generators

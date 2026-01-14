@@ -1,108 +1,123 @@
 # Texera R Plugin
 
-This plugin provides R language support for [Apache Texera](https://github.com/Texera/texera).
+R language support for [Apache Texera](https://github.com/apache/texera), enabling data processing workflows using R code.
 
 ## Installation
 
 ### Prerequisites
 
-1. **R installation** - You must have R installed on your system
-   - Download from: https://www.r-project.org/
-   - Set `R_HOME` environment variable (if not auto-detected)
+**R Installation** (version 4.5.2)
+- Download from: https://www.r-project.org/
+- Other R versions may work but have not been tested
 
-2. **Required R packages**:
-   ```r
-   install.packages(c("arrow", "coro", "aws.s3"))
-   ```
+**Required R packages** (install these specific versions):
+```r
+# Install tested versions
+install.packages("remotes")
+remotes::install_version("arrow", version = "22.0.0.1")
+remotes::install_version("coro", version = "1.1.0")
+remotes::install_version("aws.s3", version = "0.3.22")
+```
 
-### Install the Plugin
+### Install Plugin
 
 ```bash
-# Install from GitHub (recommended)
-pip install git+https://github.com/Texera/texera-r-plugin.git
+# Install from GitHub
+pip install git+https://github.com/kunwp1/texera-r-plugin.git
 
-# For development (from source)
-git clone https://github.com/Texera/texera-r-plugin.git
+# Development install
+git clone https://github.com/kunwp1/texera-r-plugin.git
 cd texera-r-plugin
 pip install -e .
 ```
 
 ## Usage
 
-Once installed, the plugin will be automatically detected by Texera. You can use R operators in your workflows:
+The plugin provides two APIs for processing data in Texera workflows:
 
-### R UDF Operator (Tuple API)
+### Tuple API (Row-by-Row Processing)
 
+**Source Operator:**
+```r
+library(coro)
+coro::generator(function() {
+  yield(list(col1 = "Hello World!", col2 = 1.0, col3 = TRUE))
+})
+```
+
+**UDF Operator:**
 ```r
 library(coro)
 coro::generator(function(tuple, port) {
-  # Process tuple and yield results
-  tuple$new_column <- tuple$existing_column * 2
+  tuple$col4 <- tuple$col2 * 2
   yield(tuple)
 })
 ```
 
-### R UDF Operator (Table API)
+### Table API (Batch Processing)
 
+**Source Operator:**
+```r
+function() {
+  df <- data.frame(
+    col1 = "Hello World!",
+    col2 = 1.0,
+    col3 = TRUE
+  )
+  return(df)
+}
+```
+
+**UDF Operator:**
 ```r
 function(table, port) {
-  # Process dataframe and return result
-  table$new_column <- table$existing_column * 2
+  table$col4 <- table$col2 * 2
   return(table)
 }
 ```
 
-### R Source Operator
-
-```r
-library(coro)
-coro::generator(function() {
-  yield(list(text = "Hello from R!"))
-})
-```
-
 ## Features
 
-- **Tuple API**: Process data row-by-row with generators
-- **Table API**: Process data in batches with dataframes
-- **Arrow Integration**: Efficient data transfer using Apache Arrow
-- **Large Binary Support**: Handle large binary objects via S3-compatible storage
+- **Tuple API**: Row-by-row processing with R generators
+- **Table API**: Batch processing with R dataframes
+- **Apache Arrow**: Efficient data transfer between Python and R
+- **Large Binary Support**: Handle large objects via S3-compatible storage
 
-## Compatibility
+## Requirements
 
-- **Texera**: Compatible with Texera 0.1.0+
-- **Python**: 3.8, 3.9, 3.10, 3.11
-- **R**: 4.0+
+### Tested Versions
+
+This plugin has been tested and verified to work with the following versions:
+
+**Python Environment:**
+- **Python**: 3.10, 3.11, 3.12
 - **rpy2**: 3.5.11
+- **rpy2-arrow**: 0.0.8
 
-## Development
+**R Environment:**
+- **R**: 4.5.2
+- **arrow**: 22.0.0.1
+- **coro**: 1.1.0
+- **aws.s3**: 0.3.22
 
-### Building from Source
-
-```bash
-python setup.py sdist bdist_wheel
-```
+Other versions may work but have not been tested and are not guaranteed to be compatible.
 
 ## License
 
-This project is licensed under the **GNU General Public License v2.0** - see the [LICENSE](LICENSE) file for details.
+Licensed under the **GNU General Public License v2.0** (due to rpy2 dependency). See [LICENSE](LICENSE) for details.
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! To contribute:
 
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## Support
+## Links
 
-- **Issues**: https://github.com/Texera/texera-r-plugin/issues
-- **Main Texera Project**: https://github.com/apache/texera
-
-## Credits
-
-This plugin is maintained by the Texera development team and uses:
-- [rpy2](https://github.com/rpy2/rpy2) for Python-R interface
+- **Issues**: https://github.com/kunwp1/texera-r-plugin/issues
+- **Apache Texera**: https://github.com/apache/texera
+- **rpy2**: https://github.com/rpy2/rpy2

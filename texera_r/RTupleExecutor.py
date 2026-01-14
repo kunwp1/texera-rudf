@@ -99,6 +99,7 @@ class RTupleExecutor(TupleOperatorV2):
         if (!requireNamespace("aws.s3", quietly = TRUE)) {
             stop("Package 'aws.s3' is required for LargeBinary operations. Please install it with: install.packages('aws.s3')")
         }
+        library(aws.s3)
 
         DEFAULT_BUCKET <- "texera-large-binaries"
         

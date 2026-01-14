@@ -1,0 +1,6 @@
+.RData
+.Rhistory
+
+build/
+dist/
+texera_r_plugin.egg-info/

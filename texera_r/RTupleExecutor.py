@@ -99,7 +99,6 @@ class RTupleExecutor(TupleOperatorV2):
         if (!requireNamespace("aws.s3", quietly = TRUE)) {
             stop("Package 'aws.s3' is required for LargeBinary operations. Please install it with: install.packages('aws.s3')")
         }
-        library(aws.s3)
 
         DEFAULT_BUCKET <- "texera-large-binaries"
         
@@ -154,12 +153,16 @@ class RTupleExecutor(TupleOperatorV2):
                 
                 # Ensure bucket exists
                 tryCatch({
-                    head_bucket(DEFAULT_BUCKET, base_url = config$base_url, use_https = config$use_https,
-                               region = config$region, key = config$username, secret = config$password)
+                    invisible(capture.output(
+                        head_bucket(DEFAULT_BUCKET, base_url = config$base_url, use_https = config$use_https,
+                                   region = config$region, key = config$username, secret = config$password)
+                    ))
                 }, error = function(e) {
                     tryCatch({
-                        put_bucket(DEFAULT_BUCKET, base_url = config$base_url, use_https = config$use_https,
-                                  region = config$region, key = config$username, secret = config$password)
+                        invisible(capture.output(
+                            put_bucket(DEFAULT_BUCKET, base_url = config$base_url, use_https = config$use_https,
+                                      region = config$region, key = config$username, secret = config$password)
+                        ))
                     }, error = function(e2) {
                         # Ignore errors if bucket already exists
                     })
@@ -194,16 +197,18 @@ class RTupleExecutor(TupleOperatorV2):
             # This is more reliable than s3connection which doesn't work well with MinIO
             tryCatch({
                 temp_file <- tempfile()
-                save_object(
-                    object = parsed$object_key,
-                    bucket = parsed$bucket,
-                    file = temp_file,
-                    base_url = config$base_url,
-                    use_https = config$use_https,
-                    region = config$region,
-                    key = config$username,
-                    secret = config$password
-                )
+                invisible(capture.output(
+                    save_object(
+                        object = parsed$object_key,
+                        bucket = parsed$bucket,
+                        file = temp_file,
+                        base_url = config$base_url,
+                        use_https = config$use_https,
+                        region = config$region,
+                        key = config$username,
+                        secret = config$password
+                    )
+                ))
                 
                 file_conn <- file(temp_file, open = "rb")
                 closed <- FALSE
@@ -304,18 +309,20 @@ class RTupleExecutor(TupleOperatorV2):
                     tryCatch({
                         # Use multipart upload for better performance with large files
                         # Default part size of 50MB is a good balance
-                        put_object(
-                            file = temp_file,
-                            object = parsed$object_key,
-                            bucket = parsed$bucket,
-                            base_url = config$base_url,
-                            use_https = config$use_https,
-                            region = config$region,
-                            key = config$username,
-                            secret = config$password,
-                            multipart = TRUE,
-                            part_size = 50 * 1024 * 1024  # 50MB parts
-                        )
+                        invisible(capture.output(
+                            put_object(
+                                file = temp_file,
+                                object = parsed$object_key,
+                                bucket = parsed$bucket,
+                                base_url = config$base_url,
+                                use_https = config$use_https,
+                                region = config$region,
+                                key = config$username,
+                                secret = config$password,
+                                multipart = TRUE,
+                                part_size = 50 * 1024 * 1024  # 50MB parts
+                            )
+                        ))
                     }, error = function(e) {
                         unlink(temp_file)
                         stop("Failed to upload to S3: ", conditionMessage(e))

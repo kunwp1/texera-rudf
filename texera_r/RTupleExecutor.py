@@ -217,7 +217,23 @@ class RTupleExecutor(TupleOperatorV2):
                 # Standard I/O methods (consistent with Python API)
                 read_func <- function(n = -1) {
                     if (closed) stop("I/O operation on closed stream")
-                    readBin(file_conn, "raw", n = n)
+                    if (n < 0) {
+                        # Read all remaining data (like Python's read(-1))
+                        # Use file.info to get size, then read entire file
+                        file_size <- file.info(temp_file)$size
+                        if (is.na(file_size) || file_size == 0) {
+                            return(raw(0))
+                        }
+                        # Get current position and calculate remaining bytes
+                        current_pos <- seek(file_conn, NA)
+                        remaining <- file_size - current_pos
+                        if (remaining <= 0) {
+                            return(raw(0))
+                        }
+                        readBin(file_conn, "raw", n = remaining)
+                    } else {
+                        readBin(file_conn, "raw", n = n)
+                    }
                 }
                 
                 readline_func <- function(size = -1) {

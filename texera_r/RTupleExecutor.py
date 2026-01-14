@@ -63,18 +63,10 @@ class RTupleExecutor(TupleOperatorV2):
 
     @staticmethod
     def _setup_r_large_binary_apis():
-        """
-        Set up R functions for large binary operations.
-        These are pure R implementations that use aws.s3 to interact with S3,
-        avoiding the garbage collection issues with Python object wrappers.
-        """
-        # Pass S3 configuration from Python to R via environment variables
-        # so R code can access it
+        """Set up R functions for large binary S3 operations."""
         import os
         from core.storage.storage_config import StorageConfig
 
-        # Set environment variables that R can read
-        # Use getattr to handle cases where StorageConfig might not be initialized
         s3_endpoint = getattr(StorageConfig, "S3_ENDPOINT", None) or os.getenv(
             "STORAGE_S3_ENDPOINT", "http://localhost:9000"
         )
@@ -93,92 +85,63 @@ class RTupleExecutor(TupleOperatorV2):
         os.environ["STORAGE_S3_AUTH_USERNAME"] = s3_username
         os.environ["STORAGE_S3_AUTH_PASSWORD"] = s3_password
 
-        # Inject pure R implementations into R environment
         robjects.r("""
-        # Load aws.s3 package (required for S3 operations)
         if (!requireNamespace("aws.s3", quietly = TRUE)) {
-            stop("Package 'aws.s3' is required for LargeBinary operations. Please install it with: install.packages('aws.s3')")
+            stop("Package 'aws.s3' required. Install with: install.packages('aws.s3')")
         }
         library(aws.s3)
 
         DEFAULT_BUCKET <- "texera-large-binaries"
         
-        # Setup S3 configuration
         setup_s3_config <- function() {
-            s3_endpoint <- Sys.getenv("STORAGE_S3_ENDPOINT", "http://localhost:9000")
-            s3_region <- Sys.getenv("STORAGE_S3_REGION", "us-west-2")
-            s3_username <- Sys.getenv("STORAGE_S3_AUTH_USERNAME", "texera_minio")
-            s3_password <- Sys.getenv("STORAGE_S3_AUTH_PASSWORD", "password")
-            
             Sys.setenv(
-                AWS_ACCESS_KEY_ID = s3_username,
-                AWS_SECRET_ACCESS_KEY = s3_password,
-                AWS_S3_ENDPOINT = s3_endpoint,
-                AWS_DEFAULT_REGION = s3_region
+                AWS_ACCESS_KEY_ID = Sys.getenv("STORAGE_S3_AUTH_USERNAME", "texera_minio"),
+                AWS_SECRET_ACCESS_KEY = Sys.getenv("STORAGE_S3_AUTH_PASSWORD", "password"),
+                AWS_S3_ENDPOINT = Sys.getenv("STORAGE_S3_ENDPOINT", "http://localhost:9000"),
+                AWS_DEFAULT_REGION = Sys.getenv("STORAGE_S3_REGION", "us-west-2")
             )
             
-            # For MinIO and other S3-compatible services, don't use region in hostname
-            # Set region to empty string to prevent region-based URL construction
+            endpoint <- Sys.getenv("STORAGE_S3_ENDPOINT", "http://localhost:9000")
             list(
-                endpoint = s3_endpoint,
-                region = "",  # Empty region for MinIO to avoid region.hostname construction
-                username = s3_username,
-                password = s3_password,
-                base_url = sub("^https?://", "", s3_endpoint),
-                use_https = grepl("^https://", s3_endpoint)
+                base_url = sub("^https?://", "", endpoint),
+                use_https = grepl("^https://", endpoint),
+                region = "",
+                username = Sys.getenv("STORAGE_S3_AUTH_USERNAME", "texera_minio"),
+                password = Sys.getenv("STORAGE_S3_AUTH_PASSWORD", "password")
             )
         }
         
-        # Parse S3 URI into bucket and object key
         parse_s3_uri <- function(uri) {
-            if (!grepl("^s3://", uri)) {
-                stop("Invalid S3 URI: ", uri)
-            }
-            path_without_scheme <- sub("^s3://", "", uri)
-            parts <- strsplit(path_without_scheme, "/", fixed = TRUE)[[1]]
-            if (length(parts) < 2) {
-                stop("Invalid S3 URI format: ", uri)
-            }
+            if (!grepl("^s3://", uri)) stop("Invalid S3 URI: ", uri)
+            parts <- strsplit(sub("^s3://", "", uri), "/", fixed = TRUE)[[1]]
+            if (length(parts) < 2) stop("Invalid S3 URI format: ", uri)
             list(bucket = parts[1], object_key = paste(parts[-1], collapse = "/"))
         }
         
-        # Generate unique ID
         generate_uuid <- function() {
             paste(sample(c(0:9, letters[1:6]), 32, replace = TRUE), collapse = "")
         }
 
-        # Create or wrap a largebinary URI
         largebinary <- function(uri = NULL) {
             if (is.null(uri)) {
                 config <- setup_s3_config()
                 
-                # Ensure bucket exists
-                tryCatch({
-                    invisible(capture.output(
-                        head_bucket(DEFAULT_BUCKET, base_url = config$base_url, use_https = config$use_https,
-                                   region = config$region, key = config$username, secret = config$password)
-                    ))
-                }, error = function(e) {
-                    tryCatch({
-                        invisible(capture.output(
-                            put_bucket(DEFAULT_BUCKET, base_url = config$base_url, use_https = config$use_https,
-                                      region = config$region, key = config$username, secret = config$password)
-                        ))
-                    }, error = function(e2) {
-                        # Ignore errors if bucket already exists
-                    })
-                })
+                tryCatch(
+                    invisible(capture.output(head_bucket(DEFAULT_BUCKET, base_url = config$base_url, 
+                        use_https = config$use_https, region = config$region, 
+                        key = config$username, secret = config$password))),
+                    error = function(e) {
+                        tryCatch(
+                            invisible(capture.output(put_bucket(DEFAULT_BUCKET, base_url = config$base_url,
+                                use_https = config$use_https, region = config$region,
+                                key = config$username, secret = config$password))),
+                            error = function(e2) {}
+                        )
+                    }
+                )
                 
-                # Generate unique URI with timestamp (milliseconds since epoch)
-                # Use numeric (not integer) since milliseconds exceed R integer max value
-                timestamp_ms <- as.numeric(Sys.time()) * 1000
-                if (is.na(timestamp_ms) || !is.finite(timestamp_ms)) {
-                    timestamp_ms <- as.numeric(Sys.time()) * 1000
-                }
-                # Format without scientific notation
-                timestamp_ms_str <- sprintf("%.0f", timestamp_ms)
-                unique_id <- generate_uuid()
-                uri <- paste0("s3://", DEFAULT_BUCKET, "/objects/", timestamp_ms_str, "/", unique_id)
+                timestamp_ms_str <- sprintf("%.0f", as.numeric(Sys.time()) * 1000)
+                uri <- paste0("s3://", DEFAULT_BUCKET, "/objects/", timestamp_ms_str, "/", generate_uuid())
             } else if (!is.character(uri) || length(uri) != 1) {
                 stop("uri must be a single character string")
             } else if (!grepl("^s3://", uri)) {
@@ -187,100 +150,55 @@ class RTupleExecutor(TupleOperatorV2):
             return(uri)
         }
 
-        # Stream for reading from S3
         LargeBinaryInputStream <- function(uri) {
             if (!is.character(uri)) stop("Expected character URI string")
             
             parsed <- parse_s3_uri(uri)
             config <- setup_s3_config()
             
-            # Download file to temp location first, then create connection
-            # This is more reliable than s3connection which doesn't work well with MinIO
-            tryCatch({
-                temp_file <- tempfile()
-                invisible(capture.output(
-                    save_object(
-                        object = parsed$object_key,
-                        bucket = parsed$bucket,
-                        file = temp_file,
-                        base_url = config$base_url,
-                        use_https = config$use_https,
-                        region = config$region,
-                        key = config$username,
-                        secret = config$password
-                    )
-                ))
-                
-                file_conn <- file(temp_file, open = "rb")
-                closed <- FALSE
-                
-                # Standard I/O methods (consistent with Python API)
-                read_func <- function(n = -1) {
+            temp_file <- tempfile()
+            invisible(capture.output(
+                save_object(object = parsed$object_key, bucket = parsed$bucket, file = temp_file,
+                    base_url = config$base_url, use_https = config$use_https, region = config$region,
+                    key = config$username, secret = config$password)
+            ))
+            
+            file_conn <- file(temp_file, open = "rb")
+            closed <- FALSE
+            
+            list(
+                read = function(n = -1) {
                     if (closed) stop("I/O operation on closed stream")
                     if (n < 0) {
-                        # Read all remaining data (like Python's read(-1))
-                        # Use file.info to get size, then read entire file
                         file_size <- file.info(temp_file)$size
-                        if (is.na(file_size) || file_size == 0) {
-                            return(raw(0))
-                        }
-                        # Get current position and calculate remaining bytes
+                        if (is.na(file_size) || file_size == 0) return(raw(0))
                         current_pos <- seek(file_conn, NA)
                         remaining <- file_size - current_pos
-                        if (remaining <= 0) {
-                            return(raw(0))
-                        }
+                        if (remaining <= 0) return(raw(0))
                         readBin(file_conn, "raw", n = remaining)
                     } else {
                         readBin(file_conn, "raw", n = n)
                     }
-                }
-                
-                readline_func <- function(size = -1) {
+                },
+                readline = function(size = -1) {
                     if (closed) stop("I/O operation on closed stream")
                     readLines(file_conn, n = 1, warn = FALSE)
-                }
-                
-                readable_func <- function() {
-                    return(!closed)
-                }
-                
-                seekable_func <- function() {
-                    return(FALSE)  # Consistent with Python - no seeking support
-                }
-                
-                close_func <- function() {
+                },
+                readable = function() !closed,
+                seekable = function() FALSE,
+                close = function() {
                     if (!closed) {
                         closed <<- TRUE
                         close(file_conn)
                         unlink(temp_file)
                     }
-                }
-                
-                closed_func <- function() {
-                    return(closed)
-                }
-                
-                stream_obj <- list(
-                    # Standard I/O interface (matches Python API)
-                    read = read_func,
-                    readline = readline_func,
-                    readable = readable_func,
-                    seekable = seekable_func,
-                    close = close_func,
-                    closed = closed_func,
-                    # R-specific extensions for direct file access
-                    file_path = temp_file,
-                    file_conn = file_conn
-                )
-                class(stream_obj) <- "LargeBinaryInputStream"
-                return(stream_obj)
-            }, error = function(e) {
-                stop("Failed to open streaming connection for ", uri, ": ", conditionMessage(e))
-            })
+                },
+                closed = function() closed,
+                file_path = temp_file,
+                file_conn = file_conn
+            )
         }
 
-        # Stream for writing to S3
         LargeBinaryOutputStream <- function(uri) {
             if (!is.character(uri)) stop("Expected character URI string")
             
@@ -291,77 +209,39 @@ class RTupleExecutor(TupleOperatorV2):
             file_conn <- file(temp_file, open = "wb")
             closed <- FALSE
             
-            # Standard I/O methods (consistent with Python API)
-            write_func <- function(data) {
-                if (closed) stop("I/O operation on closed stream")
-                writeBin(data, file_conn)
-                return(length(data))  # Return bytes written (consistent with Python)
-            }
-            
-            writable_func <- function() {
-                return(!closed)
-            }
-            
-            seekable_func <- function() {
-                return(FALSE)  # Consistent with Python - no seeking support
-            }
-            
-            flush_func <- function() {
-                if (!closed) {
-                    flush(file_conn)
-                }
-            }
-            
-            closed_func <- function() {
-                return(closed)
-            }
-            
-            # Uploads to S3 and cleans up
-            close_func <- function() {
-                if (!closed) {
-                    closed <<- TRUE
-                    flush(file_conn)
-                    close(file_conn)
-                    
-                    tryCatch({
-                        # Use multipart upload for better performance with large files
-                        # Default part size of 50MB is a good balance
-                        invisible(capture.output(
-                            put_object(
-                                file = temp_file,
-                                object = parsed$object_key,
-                                bucket = parsed$bucket,
-                                base_url = config$base_url,
-                                use_https = config$use_https,
-                                region = config$region,
-                                key = config$username,
-                                secret = config$password,
-                                multipart = TRUE,
-                                part_size = 50 * 1024 * 1024  # 50MB parts
-                            )
-                        ))
-                    }, error = function(e) {
+            list(
+                write = function(data) {
+                    if (closed) stop("I/O operation on closed stream")
+                    writeBin(data, file_conn)
+                    return(length(data))
+                },
+                writable = function() !closed,
+                seekable = function() FALSE,
+                flush = function() if (!closed) flush(file_conn),
+                closed = function() closed,
+                close = function() {
+                    if (!closed) {
+                        closed <<- TRUE
+                        flush(file_conn)
+                        close(file_conn)
+                        
+                        tryCatch({
+                            invisible(capture.output(
+                                put_object(file = temp_file, object = parsed$object_key, bucket = parsed$bucket,
+                                    base_url = config$base_url, use_https = config$use_https, region = config$region,
+                                    key = config$username, secret = config$password,
+                                    multipart = TRUE, part_size = 50 * 1024 * 1024)
+                            ))
+                        }, error = function(e) {
+                            unlink(temp_file)
+                            stop("Failed to upload to S3: ", conditionMessage(e))
+                        })
                         unlink(temp_file)
-                        stop("Failed to upload to S3: ", conditionMessage(e))
-                    })
-                    unlink(temp_file)
-                }
-            }
-            
-            stream_obj <- list(
-                # Standard I/O interface (matches Python API)
-                write = write_func,
-                writable = writable_func,
-                seekable = seekable_func,
-                flush = flush_func,
-                close = close_func,
-                closed = closed_func,
-                # R-specific extensions for direct file access
+                    }
+                },
                 file_path = temp_file,
                 file_conn = file_conn
             )
-            class(stream_obj) <- "LargeBinaryOutputStream"
-            return(stream_obj)
         }
         """)
 

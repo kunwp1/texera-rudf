@@ -67,23 +67,24 @@ class RTupleExecutor(TupleOperatorV2):
         import os
         from core.storage.storage_config import StorageConfig
 
-        s3_endpoint = getattr(StorageConfig, "S3_ENDPOINT", None) or os.getenv(
-            "STORAGE_S3_ENDPOINT", "http://localhost:9000"
-        )
-        s3_region = getattr(StorageConfig, "S3_REGION", None) or os.getenv(
-            "STORAGE_S3_REGION", "us-west-2"
-        )
-        s3_username = getattr(StorageConfig, "S3_AUTH_USERNAME", None) or os.getenv(
-            "STORAGE_S3_AUTH_USERNAME", "texera_minio"
-        )
-        s3_password = getattr(StorageConfig, "S3_AUTH_PASSWORD", None) or os.getenv(
-            "STORAGE_S3_AUTH_PASSWORD", "password"
-        )
+        def get_config(key, env_key, default):
+            return getattr(StorageConfig, key, None) or os.getenv(env_key, default)
 
-        os.environ["STORAGE_S3_ENDPOINT"] = s3_endpoint
-        os.environ["STORAGE_S3_REGION"] = s3_region
-        os.environ["STORAGE_S3_AUTH_USERNAME"] = s3_username
-        os.environ["STORAGE_S3_AUTH_PASSWORD"] = s3_password
+        config_map = {
+            "STORAGE_S3_ENDPOINT": get_config(
+                "S3_ENDPOINT", "STORAGE_S3_ENDPOINT", "http://localhost:9000"
+            ),
+            "STORAGE_S3_REGION": get_config(
+                "S3_REGION", "STORAGE_S3_REGION", "us-west-2"
+            ),
+            "STORAGE_S3_AUTH_USERNAME": get_config(
+                "S3_AUTH_USERNAME", "STORAGE_S3_AUTH_USERNAME", "texera_minio"
+            ),
+            "STORAGE_S3_AUTH_PASSWORD": get_config(
+                "S3_AUTH_PASSWORD", "STORAGE_S3_AUTH_PASSWORD", "password"
+            ),
+        }
+        os.environ.update(config_map)
 
         robjects.r("""
         if (!requireNamespace("aws.s3", quietly = TRUE)) {
@@ -94,20 +95,24 @@ class RTupleExecutor(TupleOperatorV2):
         DEFAULT_BUCKET <- "texera-large-binaries"
         
         setup_s3_config <- function() {
+            endpoint <- Sys.getenv("STORAGE_S3_ENDPOINT", "http://localhost:9000")
+            username <- Sys.getenv("STORAGE_S3_AUTH_USERNAME", "texera_minio")
+            password <- Sys.getenv("STORAGE_S3_AUTH_PASSWORD", "password")
+            region <- Sys.getenv("STORAGE_S3_REGION", "us-west-2")
+            
             Sys.setenv(
-                AWS_ACCESS_KEY_ID = Sys.getenv("STORAGE_S3_AUTH_USERNAME", "texera_minio"),
-                AWS_SECRET_ACCESS_KEY = Sys.getenv("STORAGE_S3_AUTH_PASSWORD", "password"),
-                AWS_S3_ENDPOINT = Sys.getenv("STORAGE_S3_ENDPOINT", "http://localhost:9000"),
-                AWS_DEFAULT_REGION = Sys.getenv("STORAGE_S3_REGION", "us-west-2")
+                AWS_ACCESS_KEY_ID = username,
+                AWS_SECRET_ACCESS_KEY = password,
+                AWS_S3_ENDPOINT = endpoint,
+                AWS_DEFAULT_REGION = region
             )
             
-            endpoint <- Sys.getenv("STORAGE_S3_ENDPOINT", "http://localhost:9000")
             list(
                 base_url = sub("^https?://", "", endpoint),
                 use_https = grepl("^https://", endpoint),
                 region = "",
-                username = Sys.getenv("STORAGE_S3_AUTH_USERNAME", "texera_minio"),
-                password = Sys.getenv("STORAGE_S3_AUTH_PASSWORD", "password")
+                username = username,
+                password = password
             )
         }
         
@@ -121,31 +126,28 @@ class RTupleExecutor(TupleOperatorV2):
         generate_uuid <- function() {
             paste(sample(c(0:9, letters[1:6]), 32, replace = TRUE), collapse = "")
         }
+        
+        s3_call_args <- function(config) {
+            list(base_url = config$base_url, use_https = config$use_https, 
+                 region = config$region, key = config$username, secret = config$password)
+        }
 
         largebinary <- function(uri = NULL) {
             if (is.null(uri)) {
                 config <- setup_s3_config()
+                args <- c(list(bucket = DEFAULT_BUCKET), s3_call_args(config))
                 
                 tryCatch(
-                    invisible(capture.output(head_bucket(DEFAULT_BUCKET, base_url = config$base_url, 
-                        use_https = config$use_https, region = config$region, 
-                        key = config$username, secret = config$password))),
+                    invisible(capture.output(do.call(head_bucket, args))),
                     error = function(e) {
-                        tryCatch(
-                            invisible(capture.output(put_bucket(DEFAULT_BUCKET, base_url = config$base_url,
-                                use_https = config$use_https, region = config$region,
-                                key = config$username, secret = config$password))),
-                            error = function(e2) {}
-                        )
+                        tryCatch(invisible(capture.output(do.call(put_bucket, args))), error = function(e2) {})
                     }
                 )
                 
-                timestamp_ms_str <- sprintf("%.0f", as.numeric(Sys.time()) * 1000)
-                uri <- paste0("s3://", DEFAULT_BUCKET, "/objects/", timestamp_ms_str, "/", generate_uuid())
-            } else if (!is.character(uri) || length(uri) != 1) {
-                stop("uri must be a single character string")
-            } else if (!grepl("^s3://", uri)) {
-                stop("largebinary URI must start with 's3://', got: ", uri)
+                uri <- paste0("s3://", DEFAULT_BUCKET, "/objects/", 
+                              sprintf("%.0f", as.numeric(Sys.time()) * 1000), "/", generate_uuid())
+            } else if (!is.character(uri) || length(uri) != 1 || !grepl("^s3://", uri)) {
+                stop("uri must be a single character string starting with 's3://', got: ", uri)
             }
             return(uri)
         }
@@ -155,30 +157,28 @@ class RTupleExecutor(TupleOperatorV2):
             
             parsed <- parse_s3_uri(uri)
             config <- setup_s3_config()
-            
             temp_file <- tempfile()
-            invisible(capture.output(
-                save_object(object = parsed$object_key, bucket = parsed$bucket, file = temp_file,
-                    base_url = config$base_url, use_https = config$use_https, region = config$region,
-                    key = config$username, secret = config$password)
-            ))
+            
+            invisible(capture.output(do.call(save_object, c(
+                list(object = parsed$object_key, bucket = parsed$bucket, file = temp_file),
+                s3_call_args(config)
+            ))))
             
             file_conn <- file(temp_file, open = "rb")
             closed <- FALSE
             
+            read_all <- function() {
+                file_size <- file.info(temp_file)$size
+                if (is.na(file_size) || file_size == 0) return(raw(0))
+                remaining <- file_size - seek(file_conn, NA)
+                if (remaining <= 0) return(raw(0))
+                readBin(file_conn, "raw", n = remaining)
+            }
+            
             list(
                 read = function(n = -1) {
                     if (closed) stop("I/O operation on closed stream")
-                    if (n < 0) {
-                        file_size <- file.info(temp_file)$size
-                        if (is.na(file_size) || file_size == 0) return(raw(0))
-                        current_pos <- seek(file_conn, NA)
-                        remaining <- file_size - current_pos
-                        if (remaining <= 0) return(raw(0))
-                        readBin(file_conn, "raw", n = remaining)
-                    } else {
-                        readBin(file_conn, "raw", n = n)
-                    }
+                    if (n < 0) read_all() else readBin(file_conn, "raw", n = n)
                 },
                 readline = function(size = -1) {
                     if (closed) stop("I/O operation on closed stream")
@@ -204,7 +204,6 @@ class RTupleExecutor(TupleOperatorV2):
             
             parsed <- parse_s3_uri(uri)
             config <- setup_s3_config()
-            
             temp_file <- tempfile()
             file_conn <- file(temp_file, open = "wb")
             closed <- FALSE
@@ -226,12 +225,11 @@ class RTupleExecutor(TupleOperatorV2):
                         close(file_conn)
                         
                         tryCatch({
-                            invisible(capture.output(
-                                put_object(file = temp_file, object = parsed$object_key, bucket = parsed$bucket,
-                                    base_url = config$base_url, use_https = config$use_https, region = config$region,
-                                    key = config$username, secret = config$password,
-                                    multipart = TRUE, part_size = 50 * 1024 * 1024)
-                            ))
+                            invisible(capture.output(do.call(put_object, c(
+                                list(file = temp_file, object = parsed$object_key, bucket = parsed$bucket,
+                                     multipart = TRUE, part_size = 50 * 1024 * 1024),
+                                s3_call_args(config)
+                            ))))
                         }, error = function(e) {
                             unlink(temp_file)
                             stop("Failed to upload to S3: ", conditionMessage(e))

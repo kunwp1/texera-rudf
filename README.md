@@ -2,12 +2,6 @@
 
 This plugin provides R language support for [Apache Texera](https://github.com/Texera/texera).
 
-## ⚠️ License Notice
-
-This plugin is licensed under **GPLv2** due to its dependency on [rpy2](https://github.com/rpy2/rpy2), which is GPL-licensed. This is separate from the main Texera project which uses Apache License 2.0.
-
-By using this plugin, you agree to the terms of the GPLv2 license.
-
 ## Installation
 
 ### Prerequisites
@@ -67,7 +61,6 @@ function(table, port) {
 library(coro)
 coro::generator(function() {
   yield(list(text = "Hello from R!"))
-  yield(list(text = "Second message"))
 })
 ```
 

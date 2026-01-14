@@ -21,9 +21,6 @@ This plugin provides R language support for [Apache Texera](https://github.com/T
 # Install from GitHub (recommended)
 pip install git+https://github.com/Texera/texera-r-plugin.git
 
-# Or install from PyPI (when available)
-pip install texera-r-plugin
-
 # For development (from source)
 git clone https://github.com/Texera/texera-r-plugin.git
 cd texera-r-plugin
@@ -80,43 +77,10 @@ coro::generator(function() {
 
 ## Development
 
-### Running Tests
-
-```bash
-# Install development dependencies
-pip install -e ".[dev]"
-
-# Run tests
-pytest
-```
-
 ### Building from Source
 
 ```bash
 python setup.py sdist bdist_wheel
-```
-
-## Troubleshooting
-
-### R_HOME not found
-
-If you get an error about R_HOME not being set:
-
-```bash
-# Find your R installation
-R RHOME
-
-# Set environment variable (add to ~/.bashrc or ~/.zshrc)
-export R_HOME=/usr/lib/R  # Use the output from above command
-```
-
-### Missing R packages
-
-If R operators fail due to missing packages:
-
-```r
-# In R console
-install.packages(c("arrow", "coro", "aws.s3"))
 ```
 
 ## License
@@ -136,11 +100,9 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## Support
 
 - **Issues**: https://github.com/Texera/texera-r-plugin/issues
-- **Main Texera Project**: https://github.com/Texera/texera
-- **Documentation**: https://docs.texera.io
+- **Main Texera Project**: https://github.com/apache/texera
 
 ## Credits
 
 This plugin is maintained by the Texera development team and uses:
 - [rpy2](https://github.com/rpy2/rpy2) for Python-R interface
-- [Apache Arrow](https://arrow.apache.org/) for efficient data transfer

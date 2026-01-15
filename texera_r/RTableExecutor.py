@@ -1,4 +1,4 @@
-# This file is part of texera-r-plugin
+# This file is part of texera-rudf
 #
 # Copyright (C) 2024 The Texera Team
 #

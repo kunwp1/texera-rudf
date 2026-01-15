@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="texera-r-plugin",
+    name="texera-rudf",
     version="0.1.0",
     description="R language support plugin for Apache Texera",
     packages=find_packages(),

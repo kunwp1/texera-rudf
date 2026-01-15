@@ -1,4 +1,4 @@
-# Texera R Plugin
+# Texera R UDF
 
 R language support for [Apache Texera](https://github.com/apache/texera), enabling data processing workflows using R code.
 
@@ -23,11 +23,11 @@ remotes::install_version("aws.s3", version = "0.3.22")
 
 ```bash
 # Install from GitHub
-pip install git+https://github.com/kunwp1/texera-r-plugin.git
+pip install git+https://github.com/kunwp1/texera-rudf.git
 
 # Development install
-git clone https://github.com/kunwp1/texera-r-plugin.git
-cd texera-r-plugin
+git clone https://github.com/kunwp1/texera-rudf.git
+cd texera-rudf
 pip install -e .
 ```
 
@@ -155,6 +155,6 @@ Contributions are welcome! To contribute:
 
 ## Links
 
-- **Issues**: https://github.com/kunwp1/texera-r-plugin/issues
+- **Issues**: https://github.com/kunwp1/texera-rudf/issues
 - **Apache Texera**: https://github.com/apache/texera
 - **rpy2**: https://github.com/rpy2/rpy2

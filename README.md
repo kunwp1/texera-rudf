@@ -141,7 +141,7 @@ Other versions may work but have not been tested and are not guaranteed to be co
 
 ## License
 
-Licensed under the **GNU General Public License v2.0** (due to rpy2 dependency). See [LICENSE](LICENSE) for details.
+Licensed under the **MIT License**. See [LICENSE](LICENSE) for details.
 
 ## Contributing
 
